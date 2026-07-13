@@ -102,6 +102,7 @@ import io.trino.sql.tree.MergeDelete;
 import io.trino.sql.tree.MergeInsert;
 import io.trino.sql.tree.MergeUpdate;
 import io.trino.sql.tree.NaturalJoin;
+import io.trino.sql.tree.Nearest;
 import io.trino.sql.tree.NestedColumns;
 import io.trino.sql.tree.Node;
 import io.trino.sql.tree.NullInputCharacteristic;
@@ -471,6 +472,22 @@ public final class SqlFormatter
         {
             append(indent, "LATERAL (");
             process(node.getQuery(), indent + 1);
+            append(indent, ")");
+            return null;
+        }
+
+        @Override
+        protected Void visitNearest(Nearest node, Integer indent)
+        {
+            append(indent, "NEAREST (");
+            append(indent + 1, "FROM ");
+            process(node.getRelation(), indent + 1);
+            node.getWhere().ifPresent(where -> append(indent + 1, "WHERE ")
+                    .append(formatExpression(where))
+                    .append('\n'));
+            append(indent + 1, "MATCH ")
+                    .append(formatExpression(node.getMatch()))
+                    .append('\n');
             append(indent, ")");
             return null;
         }
@@ -2441,7 +2458,7 @@ public final class SqlFormatter
             builder.append("ALTER BRANCH ");
             builder.append(formatName(node.getSourceBranchName()));
             builder.append(" IN TABLE ");
-            builder.append(formatName(node.geTableName()));
+            builder.append(formatName(node.getTableName()));
             builder.append(" FAST FORWARD TO ");
             builder.append(formatName(node.getTargetBranchName()));
             return null;
@@ -2459,7 +2476,7 @@ public final class SqlFormatter
         protected Void visitSessionProperty(SessionProperty node, Integer indent)
         {
             append(indent, formatName(node.getName()))
-                .append(" = ")
+                    .append(" = ")
                     .append(formatExpression(node.getValue()));
             return null;
         }
@@ -2804,7 +2821,8 @@ public final class SqlFormatter
 
     private static String formatGrantScope(GrantObject grantObject)
     {
-        return String.format("%s%s%s",
+        return String.format(
+                "%s%s%s",
                 grantObject.getBranch().isPresent() ? "BRANCH " + formatName(grantObject.getBranch().get()) + " IN " : "",
                 grantObject.getEntityKind().isPresent() ? grantObject.getEntityKind().get() + " " : "",
                 formatName(grantObject.getName()));

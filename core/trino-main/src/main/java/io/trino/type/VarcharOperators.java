@@ -14,6 +14,7 @@
 package io.trino.type;
 
 import io.airlift.slice.Slice;
+import io.trino.plugin.base.util.NumberParser;
 import io.trino.spi.TrinoException;
 import io.trino.spi.function.LiteralParameters;
 import io.trino.spi.function.ScalarOperator;
@@ -32,6 +33,7 @@ public final class VarcharOperators
 {
     private VarcharOperators() {}
 
+    // fallible
     @LiteralParameters("x")
     @ScalarOperator(CAST)
     @SqlType(StandardTypes.BOOLEAN)
@@ -74,32 +76,35 @@ public final class VarcharOperators
         return (b >= 'a') && (b <= 'z');
     }
 
+    // fallible
     @LiteralParameters("x")
     @ScalarOperator(CAST)
     @SqlType(StandardTypes.DOUBLE)
     public static double castToDouble(@SqlType("varchar(x)") Slice slice)
     {
         try {
-            return Double.parseDouble(slice.toStringUtf8().trim());
+            return NumberParser.parseDouble(slice, 0, slice.length());
         }
         catch (Exception e) {
             throw new TrinoException(INVALID_CAST_ARGUMENT, format("Cannot cast '%s' to DOUBLE", slice.toStringUtf8()));
         }
     }
 
+    // fallible
     @LiteralParameters("x")
     @ScalarOperator(CAST)
     @SqlType(StandardTypes.REAL)
-    public static long castToFloat(@SqlType("varchar(x)") Slice slice)
+    public static long castToReal(@SqlType("varchar(x)") Slice slice)
     {
         try {
-            return toReal(Float.parseFloat(slice.toStringUtf8().trim()));
+            return toReal(NumberParser.parseFloat(slice, 0, slice.length()));
         }
         catch (Exception e) {
             throw new TrinoException(INVALID_CAST_ARGUMENT, format("Cannot cast '%s' to REAL", slice.toStringUtf8()));
         }
     }
 
+    // fallible
     @LiteralParameters("x")
     @ScalarOperator(CAST)
     @SqlType(StandardTypes.BIGINT)
@@ -113,6 +118,7 @@ public final class VarcharOperators
         }
     }
 
+    // fallible
     @LiteralParameters("x")
     @ScalarOperator(CAST)
     @SqlType(StandardTypes.INTEGER)
@@ -126,6 +132,7 @@ public final class VarcharOperators
         }
     }
 
+    // fallible
     @LiteralParameters("x")
     @ScalarOperator(CAST)
     @SqlType(StandardTypes.SMALLINT)
@@ -139,6 +146,7 @@ public final class VarcharOperators
         }
     }
 
+    // fallible
     @LiteralParameters("x")
     @ScalarOperator(CAST)
     @SqlType(StandardTypes.TINYINT)
@@ -152,6 +160,7 @@ public final class VarcharOperators
         }
     }
 
+    // fallible
     @LiteralParameters("x")
     @ScalarOperator(CAST)
     @SqlType(StandardTypes.NUMBER)
@@ -173,7 +182,7 @@ public final class VarcharOperators
     }
 
     @LiteralParameters("x")
-    @ScalarOperator(CAST)
+    @ScalarOperator(value = CAST, neverFails = true)
     @SqlType(StandardTypes.VARBINARY)
     public static Slice castToBinary(@SqlType("varchar(x)") Slice slice)
     {

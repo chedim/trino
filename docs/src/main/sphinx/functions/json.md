@@ -570,10 +570,61 @@ Let `<path>` return a sequence of three JSON arrays:
 <path>.size() --> 3, 4, 2
 ```
 
-### Limitations
+### Trino-specific behavior
 
-The SQL standard describes the `datetime()` JSON path item method and the
-`like_regex()` JSON path predicate. Trino does not support them.
+Without a format template, `datetime()` parses the value as the most specific of
+`DATE` / `TIME(p)` / `TIME(p) WITH TIME ZONE` / `TIMESTAMP(p)` /
+`TIMESTAMP(p) WITH TIME ZONE` based on the value's shape.
+
+The `datetime()` format template is a string of fields and literal text.
+Fields are case-insensitive and consume digits from the value; literal text
+must match the value verbatim.
+
+Supported fields:
+
+| Field            | Width | Description                                              |
+|------------------|-------|----------------------------------------------------------|
+| `YYYY` `YYY` `YY` `Y` | 4 / 3 / 2 / 1 | Year. Widths below 4 are prefixed with the leading digits of the reference year `1970` (e.g. `YY=24` → `1924`). |
+| `RRRR` `RR`      | 4 / 2 | Rounded year. With width 2, values 0–49 map to the current century, 50–99 to the previous century. |
+| `MM`             | 2     | Month, 1–12. |
+| `DD`             | 2     | Day of month, 1–31. |
+| `DDD`            | 3     | Day of year, 1–366. Mutually exclusive with `MM` / `DD`. |
+| `HH24`           | 2     | Hour of day, 0–23. Mutually exclusive with `HH` / `HH12` / `A.M.` / `P.M.`. |
+| `HH` `HH12`      | 2     | Hour of half-day, 1–12. Requires `A.M.` or `P.M.`. |
+| `A.M.` `P.M.`    | 4     | Half-day marker. Case-insensitive (both `a.m.` and `A.M.` are accepted). Requires `HH` or `HH12`. |
+| `MI`             | 2     | Minute, 0–59. |
+| `SS`             | 2     | Second, 0–59. |
+| `SSSSS`          | 5     | Second of day, 0–86399. Mutually exclusive with `HH` / `HH12` / `HH24` / `MI` / `SS` / `A.M.` / `P.M.`. |
+| `FF1`–`FF9`      | 1–9   | Fractional seconds, with the given digit width. |
+| `TZH`            | 3     | Time zone hour offset with sign, e.g. `+05` or `-08`. |
+| `TZM`            | 2     | Time zone minute offset, 0–59. Requires `TZH`. |
+
+Literal text is any of the single-character delimiters `-`, `.`, `/`, `,`,
+`'`, `;`, `:`, ` ` (space), or a double-quoted string (escape an embedded `"`
+as `""`). Two adjacent delimiters are rejected; a delimiter next to a quoted
+literal is fine.
+
+Examples:
+
+```text
+YYYY-MM-DD                          -> 2024-01-02
+YYYY-MM-DD"T"HH24:MI:SS.FF3         -> 2024-01-02T12:34:56.789
+HH12:MI:SS A.M.                     -> 09:30:00 P.M.
+YYYY-MM-DD HH24:MI:SS.FF3 TZH:TZM   -> 2024-01-02 12:34:56.789 +05:30
+```
+
+Trino additionally accepts `FF10`, `FF11`, and `FF12` to match Trino's maximum
+`TIME(p)` / `TIMESTAMP(p)` precision of 12 — these widths are a Trino
+extension and may not be portable across other SQL/JSON implementations.
+
+`like_regex()` accepts the standard SQL/XQuery flags (`i`, `m`, `s`, `x`).
+
+#### Limitations
+
+- `\s`, `\d`, and `\w` match only ASCII characters, not the full Unicode
+  character classes defined by XQuery.
+- The XML name-class escapes `\i`, `\I`, `\c`, and `\C` are not supported.
+- The `x` extended-mode flag may not be supported in all configurations.
 
 (json-path-modes)=
 ### JSON path modes
@@ -1054,6 +1105,11 @@ to the `ON ERROR` clause are:
 - JSON path evaluation errors, e.g. division by zero
 - Returned scalar not convertible to the desired type
 
+The `DEFAULT` expression in `ON EMPTY` and `ON ERROR` is only evaluated when
+the corresponding branch is taken. If evaluation of the `ON EMPTY` default
+itself raises a data exception, the failure cascades to the `ON ERROR` clause.
+Subqueries are not supported in `DEFAULT` expressions.
+
 ### Examples
 
 Let `customers` be a table containing two columns: `id:bigint`,
@@ -1229,6 +1285,12 @@ data.
 
 `ON ERROR` specifies how to handle processing errors. `ERROR ON ERROR` throws an
 error. `EMPTY ON ERROR` returns an empty result set.
+
+For each value column with `DEFAULT` in its `ON EMPTY` or `ON ERROR` clause,
+the default expression is only evaluated when the corresponding branch is
+taken, and if the `ON EMPTY` default itself raises a data exception, the
+failure cascades to the `ON ERROR` clause. Subqueries are not supported in
+`json_table` `DEFAULT` expressions.
 
 `column_name` specifies a column name.
 
